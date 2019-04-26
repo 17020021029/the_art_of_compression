@@ -44,22 +44,22 @@ twoDtree::twoDtree(PNG & imIn){ //利用stats及buildTree辅助构建twoDtree
 }
 
 twoDtree::Node * twoDtree::buildTree(stats & s, pair<int,int> ul, pair<int,int> lr) {//建立twoDTree
-	RGBAPixel a=s.getAvg(ul,lr);	//stats
-	Node* tree=new Node(ul,lr,a);
+	RGBAPixel pix=s.getAvg(ul,lr);	//stats
+	Node* tree=new Node(ul,lr,pix);
 	int x1=ul.first;
 	int x2=lr.first;
 	int y1=ul.second;
 	int y2=lr.second;//标记矩形的坐标
-	if(x1==x2&&y1==y2) return tree;
+	if(x1==x2&&y1==y2) return tree;//跳出条件
 	
 	pair<int,int> min_newlr;
 	pair<int,int> min_newul;//新的标记点坐标
-	long double min_;//最小标记值
+	long min_;//最小标记值
 	for(int i=x1;i<x2;i++){
 		pair<int,int> newlr=make_pair(i,y2);
 		pair<int,int> newul=make_pair(i+1,y1);
-		long double s1=s.getScore(ul,newlr);
-		long double s2=s.getScore(newul,lr);//stats
+		long s1=s.getScore(ul,newlr);
+		long s2=s.getScore(newul,lr);//stats
 		if(s1+s2<min_){
 			min_=s1+s2;
 			min_newlr=newlr;
@@ -69,8 +69,8 @@ twoDtree::Node * twoDtree::buildTree(stats & s, pair<int,int> ul, pair<int,int> 
 	for(int j=y1;j<y2;j++){
                 pair<int,int> newlr=make_pair(x2,j);
                 pair<int,int> newul=make_pair(x1,j+1);
-                long double s1=s.getScore(ul,newlr);
-                long double s2=s.getScore(newul,lr);
+                long s1=s.getScore(ul,newlr);
+                long s2=s.getScore(newul,lr);
                 if(s1+s2<min_){
                         min_=s1+s2;
                         min_newlr=newlr;
@@ -84,27 +84,29 @@ return tree;
 
 PNG twoDtree::render(){//润色图片
 	PNG renderPNG=PNG(width,height);
-	render(renderPNG,root);
+	render_helper(renderPNG,root);
 	return renderPNG;
 }
-void twoDtree::render(PNG & renderPNG,Node* sub_root){//将树重新整合为图片
+void twoDtree::render_helper(PNG & renderPNG,Node* sub_root){//将树重新整合为图片
 	if(sub_root==NULL) return ;
-	for(int i=sub_root->upLeft.first;i<=sub_root->lowRight.first;i++){//提取像素点
-		for(int j=sub_root->upLeft.second;j<sub_root->lowRight.second;j++){
-		*renderPNG.getPixel(i,j)=sub_root->avg;
+	for(int x=sub_root->upLeft.first;x<=sub_root->lowRight.first;x++){//提取像素点
+		for(int y=sub_root->upLeft.second;y<sub_root->lowRight.second;y++){
+		*renderPNG.getPixel(x,y)=sub_root->avg;
 		}
 	}
-	render(renderPNG,sub_root->left);
-	render(renderPNG,sub_root->right);//继续处理下面节点
+	render_helper(renderPNG,sub_root->left);
+	render_helper(renderPNG,sub_root->right);//继续处理下面节点
 } 
 
 void twoDtree::prune(double pct, int tol){//剪枝,pct百分比，tol容忍度
-	prune(pct,tol,root);
+	prune_helper(pct,tol,root);
 }
-void twoDtree::prune(double pct,int tol,Node* sub_root){//prune_helper
+void twoDtree::prune_helper(double pct,int tol,Node* sub_root){//prune_helper
 	if(sub_root->left==NULL&&sub_root->right==NULL) return;
-	long double total_leaves=get_total_leaves(pct,sub_root,sub_root->avg);//
-	long double leaves_num=get_leaves(sub_root);//叶节点个数
+	long double num_=0;
+	long double total_leaves=get_total_leaves(num_,tol,sub_root,sub_root->avg);
+	long double num=0;
+	long double leaves_num=get_leaves(num,sub_root);//叶节点个数
 	long double p=leaves_num/total_leaves;
 	if(p>=pct){
 		clear(sub_root->left);
@@ -113,27 +115,27 @@ void twoDtree::prune(double pct,int tol,Node* sub_root){//prune_helper
 		sub_root=NULL;
 	}
 	else{
-	prune(pct,tol,sub_root->left);
-	prune(pct,tol,sub_root->right);
+	prune_helper(pct,tol,sub_root->left);
+	prune_helper(pct,tol,sub_root->right);
 	}
 }
-long double twoDtree::get_leaves(Node* sub_root){//获得叶节点个数
-	if(sub_root==NULL) return 0;
+long double twoDtree::get_leaves(long double& num,Node* sub_root){//获得叶节点个数
+	if(sub_root==NULL) return num;
 	if(sub_root->left==NULL&&sub_root->right==NULL)	
-		return 1;
-	return get_leaves(sub_root->left)+get_leaves(sub_root->right);	
+		num+=1;
+	num=get_leaves(num,sub_root->left)+get_leaves(num,sub_root->right);	
 }
-long double twoDtree::get_total_leaves(int tol,Node* sub_root,RGBAPixel sub_avg){
+long double twoDtree::get_total_leaves(long double& num_,int tol,Node* sub_root,RGBAPixel sub_avg){
 	int r=sub_root->avg.r;
 	int g=sub_root->avg.g;
 	int b=sub_root->avg.b;
-	if(sub_root==NULL) return 0;
+	if(sub_root==NULL) return num_;
 	if(sub_root->left==NULL&&sub_root->right==NULL){
-		long diff=(r-sub_avg.r)*(r-sub_avg.r)+(b-sub_avg.b)*(b-sub_avg.b)+(g-sub_avg.g)*(g-sub_avg.g);
-		if(diff<=tol) return 1;
-		return 0;
+		long p=(r-sub_avg.r)*(r-sub_avg.r)+(g-sub_avg.g)*(g-sub_avg.g)+(b-sub_avg.b)*(b-sub_avg.b);
+		if(p<=tol) num_+=1;
 	}
-	return get_total_leaves(tol,sub_root->left,sub_avg)+get_total_leaves(tol,sub_root,sub_avg);
+	num_=get_total_leaves(num_,tol,sub_root->left,sub_avg)+get_total_leaves(num_,tol,sub_root->right,sub_avg);
+	
 }
 
 void twoDtree::clear(){//清空节点
@@ -143,7 +145,7 @@ void twoDtree::clear(){//清空节点
 	width=0;
 }
 void twoDtree::clear(Node* sub_root){//clear_helper
-	if(sub_root==NULL) return;
+	if(!sub_root) return;
 	clear(sub_root->left);
 	clear(sub_root->right);
 	sub_root=NULL;
@@ -156,7 +158,7 @@ void twoDtree::copy(const twoDtree & orig){//复制节点
 	root=copy_node(root);
 }
 twoDtree::Node* twoDtree::copy_node(Node* tmp){//copy_helper
-	if(tmp==NULL) return NULL;
+	if(!tmp) return NULL;
 
 	twoDtree::Node* newnode=new Node(tmp->upLeft,tmp->lowRight,tmp->avg);
 	newnode->left=copy_node(tmp->left);
